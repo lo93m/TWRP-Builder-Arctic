@@ -1,3 +1,4 @@
+```yaml
 name: Build TWRP 14.1 - Arctic
 
 on:
@@ -21,11 +22,18 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
           df -h
+          df -ih
 
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 24
+
+      - name: Verify Memory and Swap
+        run: |
+          free -h
+          swapon --show
+          df -h /
 
       - name: Install dependencies
         run: |
@@ -49,39 +57,85 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
 
       - name: Initialize TWRP source
+        timeout-minutes: 240
         run: |
+          set -euxo pipefail
+
           mkdir -p "$GITHUB_WORKSPACE/twrp"
           cd "$GITHUB_WORKSPACE/twrp"
+
+          echo "Initializing TWRP 14.1 manifest..."
           repo init --depth=1 \
             -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
             -b twrp-14.1
-          repo sync -c --no-clone-bundle --no-tags -j2
+
+          echo "Starting source synchronization..."
+          repo sync \
+            -c \
+            --no-clone-bundle \
+            --no-tags \
+            --fail-fast \
+            --verbose \
+            -j2
+
+          echo "Source synchronization completed."
+          df -h /
 
       - name: Add Arctic device tree
         run: |
+          set -euxo pipefail
+
           cd "$GITHUB_WORKSPACE/twrp"
+
           git clone --depth=1 \
             -b android-16 \
             https://github.com/lo93m/android_device_xiaomi_arctic.git \
             device/Xiaomi/arctic
 
+          echo "Device tree cloned successfully."
+
       - name: Memory diagnostics
+        if: always()
         run: |
+          echo "=== Memory ==="
           free -h
-          cat /proc/meminfo | head -20
+
+          echo "=== Swap ==="
+          swapon --show
+
+          echo "=== Memory pressure ==="
           cat /proc/pressure/memory || true
-          df -h /
+
+          echo "=== Disk space ==="
+          df -h
+
+          echo "=== Inode usage ==="
+          df -ih
 
       - name: Build vendor_boot
+        timeout-minutes: 240
         run: |
+          set -euxo pipefail
+
           cd "$GITHUB_WORKSPACE/twrp"
+
           export ALLOW_MISSING_DEPENDENCIES=true
           export LC_ALL=C
           export NINJA_HIGHMEM_NUM_JOBS=1
 
+          echo "=== Resources before build ==="
+          free -h
+          swapon --show
+          df -h /
+
           source build/envsetup.sh
           lunch twrp_arctic-ap2a-userdebug
+
+          echo "Starting vendor_boot build..."
           mka -j"$(nproc --all)" vendorbootimage
+
+          echo "Build command completed."
+          ls -lh out/target/product/arctic/vendor_boot*.img
 
       - name: Upload vendor_boot image
         uses: actions/upload-artifact@v4
@@ -92,3 +146,4 @@ jobs:
             twrp/out/target/product/arctic/vendor_boot-debug.img
           if-no-files-found: error
           retention-days: 7
+```
