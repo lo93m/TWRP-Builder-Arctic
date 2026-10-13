@@ -60,11 +60,20 @@ jobs:
             https://github.com/lo93m/android_device_xiaomi_arctic.git \
             device/Xiaomi/arctic
 
+      - name: Memory diagnostics
+        run: |
+          free -h
+          cat /proc/meminfo | head -20
+          cat /proc/pressure/memory || true
+          df -h /
+
       - name: Build vendor_boot
         run: |
           cd "$GITHUB_WORKSPACE/twrp"
           export ALLOW_MISSING_DEPENDENCIES=true
           export LC_ALL=C
+          export NINJA_HIGHMEM_NUM_JOBS=1
+
           source build/envsetup.sh
           lunch twrp_arctic-ap2a-userdebug
           mka -j1 vendorbootimage
