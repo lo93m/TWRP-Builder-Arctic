@@ -1,4 +1,4 @@
-name: Build TWRP 14.1
+name: Build TWRP 14.1 - Arctic
 
 on:
   workflow_dispatch:
@@ -9,12 +9,72 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
     steps:
       - name: Checkout builder
         uses: actions/checkout@v4
 
-      - name: Show build environment
+      - name: Free disk space
         run: |
-          echo "TWRP 14.1 build workflow initialized"
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
           df -h
-          free -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex \
+            g++-multilib gcc-multilib git git-lfs \
+            gnupg gperf imagemagick lib32readline-dev \
+            lib32z1-dev libelf-dev liblz4-tool libncurses-dev \
+            libsdl1.2-dev libssl-dev libxml2-utils lzop \
+            pngcrush rsync schedtool squashfs-tools \
+            unzip xz-utils zip zlib1g-dev python3
+
+      - name: Install repo
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL \
+            https://storage.googleapis.com/git-repo-downloads/repo \
+            -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize TWRP source
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/twrp"
+          cd "$GITHUB_WORKSPACE/twrp"
+          repo init --depth=1 \
+            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+            -b twrp-14.1
+          repo sync -c --no-clone-bundle --no-tags -j2
+
+      - name: Add Arctic device tree
+        run: |
+          cd "$GITHUB_WORKSPACE/twrp"
+          git clone --depth=1 \
+            -b android-16 \
+            https://github.com/lo93m/android_device_xiaomi_arctic.git \
+            device/Xiaomi/arctic
+
+      - name: Build vendor_boot
+        run: |
+          cd "$GITHUB_WORKSPACE/twrp"
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export LC_ALL=C
+          source build/envsetup.sh
+          lunch twrp_arctic-ap2a-eng || lunch twrp_arctic-eng
+          mka vendorbootimage
+
+      - name: Upload vendor_boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: arctic-twrp-vendor-boot
+          path: |
+            twrp/out/target/product/arctic/vendor_boot.img
+            twrp/out/target/product/arctic/vendor_boot-debug.img
+          if-no-files-found: error
+          retention-days: 7
