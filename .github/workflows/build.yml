@@ -102,7 +102,6 @@ jobs:
             --no-tags \
             --fail-fast \
             --verbose \
-            --depth=1 \
             -j2 2>&1 | tee "$GITHUB_WORKSPACE/repo-sync.log"
           sync_status=${PIPESTATUS[0]}
           set -e
@@ -134,14 +133,12 @@ jobs:
 
           echo "=== Device tree cloned successfully ==="
           git -C device/Xiaomi/arctic log -1 --oneline
-          echo "=== Device tree files ==="
           ls -la device/Xiaomi/arctic
 
       - name: Check build target
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/twrp"
-
           source build/envsetup.sh
           lunch twrp_arctic-ap2a-userdebug
 
@@ -177,16 +174,12 @@ jobs:
         run: |
           echo "=== Memory ==="
           free -h || true
-
           echo "=== Swap ==="
           swapon --show || true
-
           echo "=== Memory pressure ==="
           cat /proc/pressure/memory || true
-
           echo "=== Disk space ==="
           df -h || true
-
           echo "=== Inode usage ==="
           df -ih || true
 
