@@ -1,7 +1,6 @@
-```yaml
 name: Build TWRP 14.1 - Arctic
 
-on:
+"on":
   workflow_dispatch:
 
 permissions:
@@ -60,7 +59,6 @@ jobs:
         timeout-minutes: 240
         run: |
           set -euxo pipefail
-
           mkdir -p "$GITHUB_WORKSPACE/twrp"
           cd "$GITHUB_WORKSPACE/twrp"
 
@@ -84,14 +82,11 @@ jobs:
       - name: Add Arctic device tree
         run: |
           set -euxo pipefail
-
           cd "$GITHUB_WORKSPACE/twrp"
-
           git clone --depth=1 \
             -b android-16 \
             https://github.com/lo93m/android_device_xiaomi_arctic.git \
             device/Xiaomi/arctic
-
           echo "Device tree cloned successfully."
 
       - name: Memory diagnostics
@@ -99,16 +94,12 @@ jobs:
         run: |
           echo "=== Memory ==="
           free -h
-
           echo "=== Swap ==="
           swapon --show
-
           echo "=== Memory pressure ==="
           cat /proc/pressure/memory || true
-
           echo "=== Disk space ==="
           df -h
-
           echo "=== Inode usage ==="
           df -ih
 
@@ -116,7 +107,6 @@ jobs:
         timeout-minutes: 240
         run: |
           set -euxo pipefail
-
           cd "$GITHUB_WORKSPACE/twrp"
 
           export ALLOW_MISSING_DEPENDENCIES=true
@@ -146,4 +136,3 @@ jobs:
             twrp/out/target/product/arctic/vendor_boot-debug.img
           if-no-files-found: error
           retention-days: 7
-```
