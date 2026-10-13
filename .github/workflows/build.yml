@@ -74,7 +74,6 @@ jobs:
             --no-tags \
             --fail-fast \
             --verbose \
-            --progress \
             -j2
 
           echo "Source synchronization completed."
