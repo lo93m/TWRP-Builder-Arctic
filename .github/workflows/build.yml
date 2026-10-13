@@ -61,30 +61,22 @@ jobs:
         timeout-minutes: 240
         run: |
           set -euo pipefail
-
           mkdir -p "$GITHUB_WORKSPACE/twrp"
           cd "$GITHUB_WORKSPACE/twrp"
 
-          echo "=== Initializing TWRP 14.1 manifest ==="
-          repo init --verbose --depth=1 \
+          repo init --depth=1 \
             -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
             -b twrp-14.1
 
           echo "=== Manifest initialized ==="
-          git -C .repo/manifests log -1 --oneline || true
-
-          echo "=== Resources before synchronization ==="
           free -h
           df -h /
-
-          echo "=== Starting source synchronization ==="
 
           (
             while sleep 60; do
               echo "=== SYNC HEARTBEAT $(date -u '+%Y-%m-%d %H:%M:%S UTC') ==="
               free -h
               df -h /
-              echo "=== Active repo/git processes ==="
               pgrep -af 'repo|git|git-remote-https' || true
             done
           ) &
@@ -96,7 +88,7 @@ jobs:
             --no-clone-bundle \
             --no-tags \
             --fail-fast \
-            --verbose \
+            --depth=1 \
             -j2 2>&1 | tee "$GITHUB_WORKSPACE/repo-sync.log"
           sync_status=${PIPESTATUS[0]}
           set -e
@@ -105,8 +97,7 @@ jobs:
           wait "$heartbeat_pid" 2>/dev/null || true
 
           if [ "$sync_status" -ne 0 ]; then
-            echo "ERROR: repo sync failed with exit code $sync_status"
-            echo "=== Last 100 lines of repo sync log ==="
+            echo "ERROR: repo sync failed: $sync_status"
             tail -n 100 "$GITHUB_WORKSPACE/repo-sync.log"
             exit "$sync_status"
           fi
@@ -128,6 +119,13 @@ jobs:
           echo "Device tree cloned successfully."
           git -C device/Xiaomi/arctic log -1 --oneline
 
+      - name: Check build target
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/twrp"
+          source build/envsetup.sh
+          lunch twrp_arctic-ap2a-userdebug
+
       - name: Build vendor_boot
         timeout-minutes: 240
         run: |
@@ -138,19 +136,17 @@ jobs:
           export LC_ALL=C
           export NINJA_HIGHMEM_NUM_JOBS=1
 
-          echo "=== Resources before build ==="
           free -h
           swapon --show
           df -h /
 
           source build/envsetup.sh
           lunch twrp_arctic-ap2a-userdebug
+          mka -j2 vendorbootimage
 
-          echo "=== Starting vendor_boot build ==="
-          mka -j"$(nproc --all)" vendorbootimage
-
-          echo "=== Build command completed ==="
-          ls -lh out/target/product/arctic/vendor_boot*.img
+          find out/target/product/arctic -maxdepth 1 -type f \
+            \( -name 'vendor_boot*.img' -o -name '*recovery*.img' \) \
+            -exec ls -lh {} \;
 
       - name: Memory and disk diagnostics
         if: always()
@@ -170,12 +166,14 @@ jobs:
           echo "=== Inode usage ==="
           df -ih
 
-      - name: Upload vendor_boot image
+      - name: Upload build images
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: arctic-twrp-vendor-boot
+          name: arctic-twrp-build-output
           path: |
-            twrp/out/target/product/arctic/vendor_boot.img
-            twrp/out/target/product/arctic/vendor_boot-debug.img
-          if-no-files-found: error
+            twrp/out/target/product/arctic/vendor_boot*.img
+            twrp/out/target/product/arctic/*recovery*.img
+            repo-sync.log
+          if-no-files-found: warn
           retention-days: 7
