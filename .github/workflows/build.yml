@@ -20,6 +20,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
+          echo "=== Disk space ==="
           df -h
           df -ih
 
@@ -54,54 +55,78 @@ jobs:
             -o "$HOME/bin/repo"
           chmod +x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/repo" version
 
       - name: Initialize TWRP source
         timeout-minutes: 240
         run: |
-          set -euxo pipefail
+          set -euo pipefail
+
           mkdir -p "$GITHUB_WORKSPACE/twrp"
           cd "$GITHUB_WORKSPACE/twrp"
 
-          echo "Initializing TWRP 14.1 manifest..."
+          echo "=== Initializing TWRP 14.1 manifest ==="
           repo init --verbose --depth=1 \
             -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
             -b twrp-14.1
 
-          echo "Starting source synchronization..."
+          echo "=== Manifest initialized ==="
+          git -C .repo/manifests log -1 --oneline || true
+
+          echo "=== Resources before synchronization ==="
+          free -h
+          df -h /
+
+          echo "=== Starting source synchronization ==="
+
+          (
+            while sleep 60; do
+              echo "=== SYNC HEARTBEAT $(date -u '+%Y-%m-%d %H:%M:%S UTC') ==="
+              free -h
+              df -h /
+              echo "=== Active repo/git processes ==="
+              pgrep -af 'repo|git|git-remote-https' || true
+            done
+          ) &
+          heartbeat_pid=$!
+
+          set +e
           repo sync \
             -c \
             --no-clone-bundle \
             --no-tags \
             --fail-fast \
             --verbose \
-            -j2
+            -j2 2>&1 | tee "$GITHUB_WORKSPACE/repo-sync.log"
+          sync_status=${PIPESTATUS[0]}
+          set -e
 
-          echo "Source synchronization completed."
+          kill "$heartbeat_pid" 2>/dev/null || true
+          wait "$heartbeat_pid" 2>/dev/null || true
+
+          if [ "$sync_status" -ne 0 ]; then
+            echo "ERROR: repo sync failed with exit code $sync_status"
+            echo "=== Last 100 lines of repo sync log ==="
+            tail -n 100 "$GITHUB_WORKSPACE/repo-sync.log"
+            exit "$sync_status"
+          fi
+
+          echo "=== Source synchronization completed ==="
+          free -h
           df -h /
 
       - name: Add Arctic device tree
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/twrp"
+
           git clone --depth=1 \
             -b android-16 \
             https://github.com/lo93m/android_device_xiaomi_arctic.git \
             device/Xiaomi/arctic
-          echo "Device tree cloned successfully."
 
-      - name: Memory diagnostics
-        if: always()
-        run: |
-          echo "=== Memory ==="
-          free -h
-          echo "=== Swap ==="
-          swapon --show
-          echo "=== Memory pressure ==="
-          cat /proc/pressure/memory || true
-          echo "=== Disk space ==="
-          df -h
-          echo "=== Inode usage ==="
-          df -ih
+          echo "Device tree cloned successfully."
+          git -C device/Xiaomi/arctic log -1 --oneline
 
       - name: Build vendor_boot
         timeout-minutes: 240
@@ -121,11 +146,29 @@ jobs:
           source build/envsetup.sh
           lunch twrp_arctic-ap2a-userdebug
 
-          echo "Starting vendor_boot build..."
+          echo "=== Starting vendor_boot build ==="
           mka -j"$(nproc --all)" vendorbootimage
 
-          echo "Build command completed."
+          echo "=== Build command completed ==="
           ls -lh out/target/product/arctic/vendor_boot*.img
+
+      - name: Memory and disk diagnostics
+        if: always()
+        run: |
+          echo "=== Memory ==="
+          free -h
+
+          echo "=== Swap ==="
+          swapon --show || true
+
+          echo "=== Memory pressure ==="
+          cat /proc/pressure/memory || true
+
+          echo "=== Disk space ==="
+          df -h
+
+          echo "=== Inode usage ==="
+          df -ih
 
       - name: Upload vendor_boot image
         uses: actions/upload-artifact@v4
