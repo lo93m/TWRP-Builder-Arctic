@@ -67,7 +67,7 @@ jobs:
           export LC_ALL=C
           source build/envsetup.sh
           lunch twrp_arctic-ap2a-userdebug
-          mka vendorbootimage
+          mka -j1 vendorbootimage
 
       - name: Upload vendor_boot image
         uses: actions/upload-artifact@v4
