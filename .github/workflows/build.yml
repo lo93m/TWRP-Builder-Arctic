@@ -66,7 +66,7 @@ jobs:
           export ALLOW_MISSING_DEPENDENCIES=true
           export LC_ALL=C
           source build/envsetup.sh
-          lunch twrp_arctic-ap2a-eng || lunch twrp_arctic-eng
+          lunch twrp_arctic-ap2a-userdebug
           mka vendorbootimage
 
       - name: Upload vendor_boot image
